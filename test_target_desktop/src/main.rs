@@ -1,17 +1,20 @@
-use glfw_window_adapter::GLFWWrapper;
+use glfw_window_adapter::primary_adapter::GLFWPrimaryAdapter;
 
 fn main() {
-    let mut glfw_wrapper = match GLFWWrapper::new() { 
-        Ok(glfw_wrapper) => glfw_wrapper,
+    structured_logger::Builder::with_level("info")
+        .with_target_writer("*", structured_logger::json::new_writer(std::io::stdout()))
+        .init();
+    let mut glfw_adapter = match GLFWPrimaryAdapter::new() {
+        Ok(glfw_adapter) => glfw_adapter,
         Err(e) => {
-            eprintln!("{:?}", e);
+            log::error!("{:?}", e);
             return;
         }
     };
-    
-    while glfw_wrapper.should_loop_continue() {
-        glfw_wrapper.poll_events(|window, event| {
-            println!("{:?}", event);
+
+    while glfw_adapter.should_loop_continue() {
+        glfw_adapter.poll_events(|window, event| {
+            log::debug!("{:?}", event);
             match event {
                 glfw::WindowEvent::Key(glfw::Key::Escape, _, glfw::Action::Press, _) => {
                     window.set_should_close(true)

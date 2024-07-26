@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 glfw_window_adapter = { path = "../glfw_window_adapter" }
+common_gateways_and_adapters = { path = "../common_gateways_and_adapters" }
+log = "0.4.22"
+structured-logger = "1.0.3"
 
 [dependencies.glfw]
 version = "0.58.0"
