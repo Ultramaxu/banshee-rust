@@ -1,2 +1,2 @@
-pub mod primary_adapter;
+pub mod adapter;
 

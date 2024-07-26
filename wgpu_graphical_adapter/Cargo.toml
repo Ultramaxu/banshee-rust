@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+common = { path = "../common" }
+log = "0.4.22"
+anyhow = "1.0.86"
+wgpu = "22.0.0"
+
+[dependencies.glfw]
+version = "0.58.0"

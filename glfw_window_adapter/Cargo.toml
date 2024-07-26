@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 log = "0.4.22"
 anyhow = "1.0.86"
-common_gateways_and_adapters = { path = "../common_gateways_and_adapters" }
+common = { path = "../common" }
 
 [dependencies.glfw]
 version = "0.58.0"

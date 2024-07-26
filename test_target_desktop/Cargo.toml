@@ -5,9 +5,11 @@ edition = "2021"
 
 [dependencies]
 glfw_window_adapter = { path = "../glfw_window_adapter" }
-common_gateways_and_adapters = { path = "../common_gateways_and_adapters" }
+common = { path = "../common" }
+wgpu_graphical_adapter = { path = "../wgpu_graphical_adapter" }
 log = "0.4.22"
 structured-logger = "1.0.3"
+pollster = "0.3.0"
 
 [dependencies.glfw]
 version = "0.58.0"
