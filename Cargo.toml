@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+	"wgpu_graphical_adapter",
+	"glfw_window_adapter",
+        "test_target_desktop"
+]
