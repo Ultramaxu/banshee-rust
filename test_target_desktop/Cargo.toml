@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+glfw_window_adapter = { path = "../glfw_window_adapter" }
+
+[dependencies.glfw]
+version = "0.58.0"
