@@ -27,6 +27,8 @@ fn main() {
     };
 
     while glfw_adapter.should_loop_continue() {
+        state.render().unwrap();
+        
         glfw_adapter.poll_events(|_, event| {
             log::info!("{:?}", event);
         });
