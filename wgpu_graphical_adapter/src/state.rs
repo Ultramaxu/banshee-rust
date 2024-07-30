@@ -1,87 +1,93 @@
 use anyhow::Context;
-use wgpu::{MemoryHints, PresentMode, SurfaceTarget};
-use common::common_defs::ScreenSize;
 
-pub struct State<'a> {
+pub struct WgpuGraphicalAdapterState<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: ScreenSize,
+    size: common::common_defs::ScreenSize,
+    
+    render_pipeline: wgpu::RenderPipeline,
 }
 
-impl<'a> State<'a> {
+impl<'a> WgpuGraphicalAdapterState<'a> {
     // Creating some of the wgpu types requires async code
-    pub async fn new(window: SurfaceTarget<'a>, size: ScreenSize) -> anyhow::Result<State<'a>> {
-        if (size.width == 0) || (size.height == 0) {
-            return Err(anyhow::anyhow!("Invalid screen size: width: {}, height: {}", size.width, size.height));
-        }
-        
-        log::info!("Initializing wgpu...");
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY,
-            ..Default::default()
+    pub async fn new(
+        window: wgpu::SurfaceTarget<'a>,
+        size: common::common_defs::ScreenSize,
+        shader_code: &str,
+    ) -> anyhow::Result<WgpuGraphicalAdapterState<'a>> {
+        Self::validate_size(&size)?;
+
+        let instance = Self::initialize_instance();
+        let surface = Self::create_surface(window, &instance)?;
+        let adapter = Self::request_adapter(instance, &surface).await?;
+        let (device, queue) = Self::request_device_and_queue(&adapter).await?;
+        let config = Self::configure_surface(&size, &surface, &adapter, &device);
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(shader_code.into()),
         });
-        log::info!("Finished initializing wgpu.");
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                polygon_mode: wgpu::PolygonMode::Fill,
+                // Requires Features::DEPTH_CLIP_CONTROL
+                unclipped_depth: false,
+                // Requires Features::CONSERVATIVE_RASTERIZATION
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
         
-        log::info!("Creating surface...");
-        let surface = instance.create_surface(window)?;
-        log::info!("Finished creating surface.");
-
-        log::info!("Requesting adapter...");
-        let adapter = instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false, // we only want a hardware adapter
-            },
-        ).await.context("Unable to request WGPU adapter")?;
-        log::info!("Finished requesting adapter.");
-
-        log::info!("Requesting device and queue...");
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                label: None,
-                memory_hints: MemoryHints::Performance,
-            },
-            None, // Trace path
-        ).await.context("Unable to request WGPU device and queue")?;
-        log::info!("Finished requesting device and queue.");
-
-        log::info!("Configuring surface...");
-        let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an sRGB surface texture. Using a different
-        // one will result in all the colors coming out darker. If you want to support non
-        // sRGB surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps.formats.iter()
-            .find(|f| f.is_srgb())
-            .copied()
-            .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width: size.width,
-            height: size.height,
-            present_mode: PresentMode::Fifo, // vsync, will always be supported.
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &config);
-        log::info!("Finished configuring surface...");
-
-
-        Ok(State {
+        Ok(WgpuGraphicalAdapterState {
             surface,
             device,
             queue,
             config,
             size,
+            render_pipeline,
         })
     }
-    
+
     pub fn render(&mut self) -> anyhow::Result<()> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -90,7 +96,7 @@ impl<'a> State<'a> {
         });
 
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -109,6 +115,11 @@ impl<'a> State<'a> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
+
+            // ===============================
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw(0..3, 0..1);
+            // ===============================
         }
 
         // submit will accept anything that implements IntoIter
@@ -117,4 +128,87 @@ impl<'a> State<'a> {
 
         Ok(())
     }
+
+    fn validate_size(size: &common::common_defs::ScreenSize) -> anyhow::Result<()> {
+        if (size.width == 0) || (size.height == 0) {
+            return Err(anyhow::anyhow!("Invalid screen size: width: {}, height: {}", size.width, size.height));
+        }
+        Ok(())
+    }
+
+    fn initialize_instance() -> wgpu::Instance {
+        log::info!("Initializing wgpu...");
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            ..Default::default()
+        });
+        log::info!("Finished initializing wgpu.");
+        instance
+    }
+
+    fn create_surface(window: wgpu::SurfaceTarget<'a>, instance: &wgpu::Instance) -> anyhow::Result<wgpu::Surface<'a>> {
+        log::info!("Creating surface...");
+        let surface = instance.create_surface(window)?;
+        log::info!("Finished creating surface.");
+        Ok(surface)
+    }
+
+    async fn request_adapter(instance: wgpu::Instance, surface: &wgpu::Surface<'a>) -> anyhow::Result<wgpu::Adapter> {
+        log::info!("Requesting adapter...");
+        let adapter = instance.request_adapter(
+            &wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false, // we only want a hardware adapter
+            },
+        ).await.context("Unable to request WGPU adapter")?;
+        log::info!("Finished requesting adapter.");
+        Ok(adapter)
+    }
+
+    async fn request_device_and_queue(adapter: &wgpu::Adapter) -> anyhow::Result<(wgpu::Device, wgpu::Queue)> {
+        log::info!("Requesting device and queue...");
+        let (device, queue) = adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                label: None,
+                memory_hints: wgpu::MemoryHints::Performance,
+            },
+            None, // Trace path
+        ).await.context("Unable to request WGPU device and queue")?;
+        log::info!("Finished requesting device and queue.");
+        Ok((device, queue))
+    }
+
+    fn configure_surface(
+        size: &common::common_defs::ScreenSize,
+        surface: &wgpu::Surface,
+        adapter: &wgpu::Adapter,
+        device: &wgpu::Device
+    ) -> wgpu::SurfaceConfiguration {
+        log::info!("Configuring surface...");
+        let surface_caps = surface.get_capabilities(&adapter);
+        // Shader code in this tutorial assumes an sRGB surface texture. Using a different
+        // one will result in all the colors coming out darker. If you want to support non
+        // sRGB surfaces, you'll need to account for that when drawing to the frame.
+        let surface_format = surface_caps.formats.iter()
+            .find(|f| f.is_srgb())
+            .copied()
+            .unwrap_or(surface_caps.formats[0]);
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width: size.width,
+            height: size.height,
+            present_mode: wgpu::PresentMode::Fifo, // vsync, will always be supported.
+            alpha_mode: surface_caps.alpha_modes[0],
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
+        surface.configure(&device, &config);
+        log::info!("Finished configuring surface...");
+        config
+    }
+
 }

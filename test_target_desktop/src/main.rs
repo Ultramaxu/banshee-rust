@@ -1,7 +1,6 @@
-use glfw::PWindow;
 use pollster::FutureExt as _;
 use glfw_window_adapter::adapter::GLFWAdapter;
-use wgpu_graphical_adapter::state::{State};
+use wgpu_graphical_adapter::state::{WgpuGraphicalAdapterState};
 
 fn main() {
     structured_logger::Builder::with_level("info")
@@ -15,9 +14,10 @@ fn main() {
         }
     };
     
-    let mut state = match State::new(
+    let mut state = match WgpuGraphicalAdapterState::new(
         glfw_adapter.get_window().into(),
         glfw_adapter.get_window_size(),
+        include_str!("shader.wgsl"),
     ).block_on() {
         Ok(state) => state,
         Err(e) => {
