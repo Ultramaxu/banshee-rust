@@ -1,5 +1,5 @@
 use anyhow::Context;
-use common::common_defs::ScreenSize;
+use common::ScreenSize;
 
 pub struct GLFWAdapter {
     glfw: glfw::Glfw,

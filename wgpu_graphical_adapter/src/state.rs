@@ -6,7 +6,7 @@ pub struct WgpuGraphicalAdapterState<'a> {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: common::common_defs::ScreenSize,
+    size: common::ScreenSize,
     render_pipeline: Box<dyn WgpuGraphicalAdapterPipeline>,
 }
 
@@ -14,8 +14,9 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
     // Creating some of the wgpu types requires async code
     pub async fn new(
         window: wgpu::SurfaceTarget<'a>,
-        size: common::common_defs::ScreenSize,
+        size: common::ScreenSize,
         factory: Box<dyn WgpuGraphicalAdapterPipelineFactory>,
+        image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
     ) -> anyhow::Result<WgpuGraphicalAdapterState<'a>> {
         Self::validate_size(&size)?;
 
@@ -25,7 +26,13 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         let (device, queue) = Self::request_device_and_queue(&adapter).await?;
         let config = Self::configure_surface(&size, &surface, &adapter, &device);
 
-        let render_pipeline = factory.create(&device, &config);
+        let mut render_pipeline = factory.create(&device, &config);
+
+        render_pipeline.load_texture_sync(
+            image_loader_gateway,
+            &device,
+            &queue
+        )?;
 
         Ok(WgpuGraphicalAdapterState {
             surface,
@@ -64,7 +71,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            
+
             self.render_pipeline.render(&mut render_pass);
         }
 
@@ -75,7 +82,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         Ok(())
     }
 
-    fn validate_size(size: &common::common_defs::ScreenSize) -> anyhow::Result<()> {
+    fn validate_size(size: &common::ScreenSize) -> anyhow::Result<()> {
         if (size.width == 0) || (size.height == 0) {
             return Err(anyhow::anyhow!("Invalid screen size: width: {}, height: {}", size.width, size.height));
         }
@@ -128,7 +135,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
     }
 
     fn configure_surface(
-        size: &common::common_defs::ScreenSize,
+        size: &common::ScreenSize,
         surface: &wgpu::Surface,
         adapter: &wgpu::Adapter,
         device: &wgpu::Device

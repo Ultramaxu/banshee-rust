@@ -7,5 +7,10 @@ pub trait WgpuGraphicalAdapterPipelineFactory {
 }
 
 pub trait WgpuGraphicalAdapterPipeline {
+    fn load_texture_sync(&mut self,
+                         image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
+                         device: &wgpu::Device,
+                         queue: &wgpu::Queue,
+    ) -> anyhow::Result<()>;
     fn render(&self, render_pass: &mut wgpu::RenderPass);
 }

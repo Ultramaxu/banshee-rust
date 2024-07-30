@@ -1,5 +1,6 @@
 use pollster::FutureExt as _;
 use glfw_window_adapter::adapter::GLFWAdapter;
+use image_crate_image_loader_adapter::ImageCrateImageLoaderAdapter;
 use wgpu_graphical_adapter::default_pipeline_impl::default_pipeline::DefaultWgpuGraphicalAdapterPipelineFactory;
 use wgpu_graphical_adapter::state::{WgpuGraphicalAdapterState};
 
@@ -14,12 +15,13 @@ fn main() {
             return;
         }
     };
-    
-    let factory = Box::new(DefaultWgpuGraphicalAdapterPipelineFactory::new());
+
+    let image_loader_gateway = ImageCrateImageLoaderAdapter::new();
     let mut state = match WgpuGraphicalAdapterState::new(
         glfw_adapter.get_window().into(),
         glfw_adapter.get_window_size(),
-        factory,
+        Box::new(DefaultWgpuGraphicalAdapterPipelineFactory::new()),
+        &image_loader_gateway,
     ).block_on() {
         Ok(state) => state,
         Err(e) => {
