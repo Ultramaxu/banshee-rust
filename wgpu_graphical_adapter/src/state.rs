@@ -26,7 +26,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         let config = Self::configure_surface(&size, &surface, &adapter, &device);
 
         let render_pipeline = factory.create(&device, &config);
-        
+
         Ok(WgpuGraphicalAdapterState {
             surface,
             device,
@@ -64,11 +64,8 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-
-            // ===============================
-            render_pass.set_pipeline(&self.render_pipeline.get_inner());
-            render_pass.draw(0..3, 0..1);
-            // ===============================
+            
+            self.render_pipeline.render(&mut render_pass);
         }
 
         // submit will accept anything that implements IntoIter

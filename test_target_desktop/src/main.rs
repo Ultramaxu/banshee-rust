@@ -1,7 +1,7 @@
 use pollster::FutureExt as _;
 use glfw_window_adapter::adapter::GLFWAdapter;
+use wgpu_graphical_adapter::default_pipeline_impl::default_pipeline::DefaultWgpuGraphicalAdapterPipelineFactory;
 use wgpu_graphical_adapter::state::{WgpuGraphicalAdapterState};
-use wgpu_graphical_adapter::pipeline::{DefaultWgpuGraphicalAdapterPipelineFactory};
 
 fn main() {
     structured_logger::Builder::with_level("info")
@@ -15,9 +15,7 @@ fn main() {
         }
     };
     
-    let factory = Box::new(DefaultWgpuGraphicalAdapterPipelineFactory::new(
-        include_str!("shader.wgsl")
-    ));
+    let factory = Box::new(DefaultWgpuGraphicalAdapterPipelineFactory::new());
     let mut state = match WgpuGraphicalAdapterState::new(
         glfw_adapter.get_window().into(),
         glfw_adapter.get_window_size(),
