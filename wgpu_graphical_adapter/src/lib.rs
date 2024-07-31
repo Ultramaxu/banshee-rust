@@ -4,3 +4,4 @@ pub mod default_pipeline_impl;
 pub mod texture;
 pub mod model;
 pub mod vertex;
+pub mod camera;

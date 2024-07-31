@@ -1,5 +1,9 @@
+use wgpu::Queue;
+use wgpu::util::DeviceExt;
+
 use common::gateways::ImageLoaderGateway;
 
+use crate::camera::{CameraUniform, PerspectiveCamera};
 use crate::model::{Model, UnloadedModel};
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
 use crate::vertex::Vertex;
@@ -17,8 +21,14 @@ impl<'a> WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipe
         &self,
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
+        camera: &PerspectiveCamera,
     ) -> Box<dyn WgpuGraphicalAdapterPipeline> {
-        Box::new(DefaultWgpuGraphicalAdapterPipeline::new(device, config, include_str!("shader.wgsl")))
+        Box::new(DefaultWgpuGraphicalAdapterPipeline::new(
+            device,
+            config,
+            include_str!("shader.wgsl"),
+            camera
+        ))
     }
 }
 
@@ -26,6 +36,9 @@ pub struct DefaultWgpuGraphicalAdapterPipeline {
     pipeline: wgpu::RenderPipeline,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     models: Vec<Model>,
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
 }
 
 impl DefaultWgpuGraphicalAdapterPipeline {
@@ -33,9 +46,10 @@ impl DefaultWgpuGraphicalAdapterPipeline {
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         shader_code: &str,
+        camera: &PerspectiveCamera,
     ) -> DefaultWgpuGraphicalAdapterPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
+            label: Some("Default Render Pipeline Shader"),
             source: wgpu::ShaderSource::Wgsl(shader_code.into()),
         });
 
@@ -61,13 +75,55 @@ impl DefaultWgpuGraphicalAdapterPipeline {
                         count: None,
                     },
                 ],
-                label: Some("texture_bind_group_layout"),
+                label: Some("Default Render Pipeline Texture Bind Group Layout"),
             });
+
+
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera);
+
+        let camera_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Default Pipeline Camera Buffer"),
+                contents: bytemuck::cast_slice(&[camera_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+
+        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("Default Pipeline Camera Bind Group Layout"),
+        });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }
+            ],
+            label: Some("Default Pipeline Camera Bind Group"),
+        });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout],
+                label: Some("Default Render Pipeline Layout"),
+                bind_group_layouts: &[
+                    &camera_bind_group_layout,
+                    &texture_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
@@ -114,10 +170,14 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             cache: None,
         });
 
+
         DefaultWgpuGraphicalAdapterPipeline {
             pipeline: render_pipeline,
             texture_bind_group_layout,
             models: Vec::new(),
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
         }
     }
 
@@ -176,8 +236,14 @@ impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
         Ok(())
     }
 
+    fn update_camera(&mut self, camera: &PerspectiveCamera, queue: &Queue) {
+        self.camera_uniform.update_view_proj(camera);
+        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+    }
+
     fn render(&self, render_pass: &mut wgpu::RenderPass) {
         render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
         for model in &self.models {
             model.render(render_pass);
         }

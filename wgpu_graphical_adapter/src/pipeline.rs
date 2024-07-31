@@ -1,3 +1,4 @@
+use crate::camera::PerspectiveCamera;
 use crate::model::UnloadedModel;
 
 pub trait WgpuGraphicalAdapterPipelineFactory {
@@ -5,6 +6,7 @@ pub trait WgpuGraphicalAdapterPipelineFactory {
         &self,
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
+        camera: &PerspectiveCamera,
     ) -> Box<dyn WgpuGraphicalAdapterPipeline>;
 }
 
@@ -15,5 +17,6 @@ pub trait WgpuGraphicalAdapterPipeline {
                        device: &wgpu::Device,
                        queue: &wgpu::Queue,
     ) -> anyhow::Result<()>;
+    fn update_camera(&mut self, camera: &PerspectiveCamera, queue: &wgpu::Queue);
     fn render(&self, render_pass: &mut wgpu::RenderPass);
 }

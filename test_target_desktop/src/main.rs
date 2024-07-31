@@ -53,9 +53,9 @@ fn main() {
     state.load_model_sync(
         UnloadedModel {
             vertices: vec![
-                Vertex { position: [0.0, 0.5, 0.0], tex_coords: [0.4131759, 0.00759614]},
-                Vertex { position: [-0.5, -0.5, 0.0], tex_coords: [0.0048659444, 0.43041354] },
-                Vertex { position: [0.5, -0.5, 0.0], tex_coords: [0.28081453, 0.949397] },
+                Vertex { position: [-1.0, 0.5, 0.0], tex_coords: [0.4131759, 0.00759614]},
+                Vertex { position: [-1.5, -0.5, 0.0], tex_coords: [0.0048659444, 0.43041354] },
+                Vertex { position: [-0.5, -0.5, 0.0], tex_coords: [0.28081453, 0.949397] },
             ],
             indices: vec![
                 0, 1, 2,
@@ -66,8 +66,16 @@ fn main() {
     ).unwrap();
 
     while glfw_adapter.should_loop_continue() {
+
+        use cgmath::InnerSpace;
+        let forward = state.camera.target - state.camera.eye;
+        let forward_norm = forward.normalize();
+        let forward_mag = forward.magnitude();
+        let right = forward_norm.cross(state.camera.up);
+        state.camera.eye = state.camera.target - (forward + right * 0.02).normalize() * forward_mag;
+        state.update_camera();
         state.render().unwrap();
-        
+
         glfw_adapter.poll_events(|_, event| {
             log::info!("{:?}", event);
         });

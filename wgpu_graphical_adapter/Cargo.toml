@@ -9,4 +9,4 @@ log = "0.4.22"
 anyhow = "1.0.86"
 wgpu = "22.0.0"
 bytemuck = { version = "1.16.1", features = ["derive"] }
-glfw = "0.58.0"
+cgmath = "0.18"

@@ -1,4 +1,5 @@
 use anyhow::Context;
+use crate::camera::PerspectiveCamera;
 use crate::model::UnloadedModel;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
 
@@ -8,7 +9,8 @@ pub struct WgpuGraphicalAdapterState<'a> {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: common::ScreenSize,
-    render_pipeline: Box<dyn WgpuGraphicalAdapterPipeline>,
+    pub camera: PerspectiveCamera,
+    pub render_pipeline: Box<dyn WgpuGraphicalAdapterPipeline>,
 }
 
 impl<'a> WgpuGraphicalAdapterState<'a> {
@@ -26,7 +28,22 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         let (device, queue) = Self::request_device_and_queue(&adapter).await?;
         let config = Self::configure_surface(&size, &surface, &adapter, &device);
 
-        let render_pipeline = factory.create(&device, &config);
+        let camera = PerspectiveCamera {
+            // position the camera 1 unit up and 2 units back
+            // +z is out of the screen
+            eye: (0.0, 1.0, 2.0).into(),
+            // have it look at the origin
+            target: (0.0, 0.0, 0.0).into(),
+            // which way is "up"
+            up: cgmath::Vector3::unit_y(),
+            aspect: config.width as f32 / config.height as f32,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+
+        let render_pipeline = factory.create(&device, &config, &camera);
+        
 
         Ok(WgpuGraphicalAdapterState {
             surface,
@@ -34,6 +51,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
             queue,
             config,
             size,
+            camera,
             render_pipeline,
         })
     }
@@ -48,6 +66,10 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
             &self.device,
             &self.queue
         )
+    }
+    
+    pub fn update_camera(&mut self) {
+        self.render_pipeline.update_camera(&self.camera, &self.queue);
     }
     
     pub fn render(&mut self) -> anyhow::Result<()> {
