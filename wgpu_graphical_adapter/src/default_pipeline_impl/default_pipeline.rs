@@ -1,36 +1,18 @@
-use wgpu::{Device, Queue};
-use wgpu::util::DeviceExt;
-
 use common::gateways::ImageLoaderGateway;
 
-use crate::default_pipeline_impl::texture::Texture;
-use crate::default_pipeline_impl::vertex::Vertex;
+use crate::model::{Model, UnloadedModel};
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
+use crate::vertex::Vertex;
 
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [-0.0868241, 0.49240386, 0.0], tex_coords: [0.4131759, 0.00759614], }, // A
-    Vertex { position: [-0.49513406, 0.06958647, 0.0], tex_coords: [0.0048659444, 0.43041354], }, // B
-    Vertex { position: [-0.21918549, -0.44939706, 0.0], tex_coords: [0.28081453, 0.949397], }, // C
-    Vertex { position: [0.35966998, -0.3473291, 0.0], tex_coords: [0.85967, 0.84732914], }, // D
-    Vertex { position: [0.44147372, 0.2347359, 0.0], tex_coords: [0.9414737, 0.2652641], }, // E
-];
+pub struct DefaultWgpuGraphicalAdapterPipelineFactory {}
 
-const INDICES: &[u16] = &[
-    0, 1, 4,
-    1, 2, 4,
-    2, 3, 4,
-];
-
-pub struct DefaultWgpuGraphicalAdapterPipelineFactory {
-}
-
-impl <'a> DefaultWgpuGraphicalAdapterPipelineFactory {
+impl<'a> DefaultWgpuGraphicalAdapterPipelineFactory {
     pub fn new() -> DefaultWgpuGraphicalAdapterPipelineFactory {
         DefaultWgpuGraphicalAdapterPipelineFactory {}
     }
 }
 
-impl <'a> WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipelineFactory {
+impl<'a> WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipelineFactory {
     fn create(
         &self,
         device: &wgpu::Device,
@@ -43,11 +25,7 @@ impl <'a> WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPip
 pub struct DefaultWgpuGraphicalAdapterPipeline {
     pipeline: wgpu::RenderPipeline,
     texture_bind_group_layout: wgpu::BindGroupLayout,
-    textures: Vec<Texture>,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_vertices: u32,
-    num_indices: u32,
+    models: Vec<Model>,
 }
 
 impl DefaultWgpuGraphicalAdapterPipeline {
@@ -100,7 +78,7 @@ impl DefaultWgpuGraphicalAdapterPipeline {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[
-                    Vertex::desc(),
+                    DefaultWgpuGraphicalAdapterPipeline::get_vertex_desc(),
                 ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -136,57 +114,72 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(VERTICES),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
-
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(INDICES),
-                usage: wgpu::BufferUsages::INDEX,
-            }
-        );
-
         DefaultWgpuGraphicalAdapterPipeline {
             pipeline: render_pipeline,
             texture_bind_group_layout,
-            textures: Vec::new(),
-            vertex_buffer,
-            index_buffer,
-            num_vertices: VERTICES.len() as u32,
-            num_indices: INDICES.len() as u32,
+            models: Vec::new(),
+        }
+    }
+
+    fn get_vertex_desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x2,
+                }
+            ],
         }
     }
 }
 
 impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
-    fn load_texture_sync(
+    fn load_model_sync(
         &mut self,
+        model: UnloadedModel,
         image_loader_gateway: &dyn ImageLoaderGateway,
-        device: &Device,
-        queue: &Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
     ) -> anyhow::Result<()> {
-        self.textures.push(Texture::load(
-            image_loader_gateway, 
+        let model = model.load(
+            image_loader_gateway,
+            |texture_view, sampler| {
+                device.create_bind_group(
+                    &wgpu::BindGroupDescriptor {
+                        layout: &self.texture_bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&texture_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&sampler),
+                            }
+                        ],
+                        label: Some("diffuse_bind_group"),
+                    }
+                )
+            },
             device,
             queue,
-            &self.texture_bind_group_layout
-        )?);
+        )?;
+        self.models.push(model);
         Ok(())
     }
 
     fn render(&self, render_pass: &mut wgpu::RenderPass) {
         render_pass.set_pipeline(&self.pipeline);
-        for texture in &self.textures {
-            render_pass.set_bind_group(0, &texture.diffuse_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+        for model in &self.models {
+            model.render(render_pass);
         }
     }
 }

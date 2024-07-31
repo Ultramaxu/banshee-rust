@@ -1,4 +1,5 @@
 use anyhow::Context;
+use crate::model::UnloadedModel;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
 
 pub struct WgpuGraphicalAdapterState<'a> {
@@ -16,7 +17,6 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         window: wgpu::SurfaceTarget<'a>,
         size: common::ScreenSize,
         factory: Box<dyn WgpuGraphicalAdapterPipelineFactory>,
-        image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
     ) -> anyhow::Result<WgpuGraphicalAdapterState<'a>> {
         Self::validate_size(&size)?;
 
@@ -26,13 +26,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         let (device, queue) = Self::request_device_and_queue(&adapter).await?;
         let config = Self::configure_surface(&size, &surface, &adapter, &device);
 
-        let mut render_pipeline = factory.create(&device, &config);
-
-        render_pipeline.load_texture_sync(
-            image_loader_gateway,
-            &device,
-            &queue
-        )?;
+        let render_pipeline = factory.create(&device, &config);
 
         Ok(WgpuGraphicalAdapterState {
             surface,
@@ -44,6 +38,18 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         })
     }
 
+    pub fn load_model_sync(&mut self,
+                           model: UnloadedModel,
+                           image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
+    ) -> anyhow::Result<()> {
+        self.render_pipeline.load_model_sync(
+            model,
+            image_loader_gateway,
+            &self.device,
+            &self.queue
+        )
+    }
+    
     pub fn render(&mut self) -> anyhow::Result<()> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());

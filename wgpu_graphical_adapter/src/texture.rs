@@ -1,16 +1,16 @@
 pub struct Texture {
-    pub diffuse_texture: wgpu::Texture,
     pub diffuse_bind_group: wgpu::BindGroup,
 }
 
 impl Texture {
-    pub fn load(
+    pub fn load<F>(
         image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
+        bind_group_builder: F,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        texture_bind_group_layout: &wgpu::BindGroupLayout,
-    ) -> anyhow::Result<Texture> {
-        let image = image_loader_gateway.load_sync("diffuse.png")?;
+        id: &str,
+    ) -> anyhow::Result<Texture> where F: FnOnce(&wgpu::TextureView, &wgpu::Sampler) -> wgpu::BindGroup {
+        let image = image_loader_gateway.load_sync(id)?;
 
         let texture_size = wgpu::Extent3d {
             width: image.dimensions.0,
@@ -31,7 +31,7 @@ impl Texture {
                 // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
                 // COPY_DST means that we want to copy data to this texture
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                label: Some("diffuse_texture"),
+                label: None,
                 // This is the same as with the SurfaceConfig. It
                 // specifies what texture formats can be used to
                 // create TextureViews for this texture. The base
@@ -64,7 +64,7 @@ impl Texture {
 
         // We don't need to configure the texture view much, so let's
         // let wgpu define it.
-        let diffuse_texture_view = diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let diffuse_view = diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // FIXME with proper tests and read about mipmaps
         let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -78,25 +78,9 @@ impl Texture {
             // Other parameters are at https://docs.rs/wgpu/latest/wgpu/struct.SamplerDescriptor.html
         });
 
-        let diffuse_bind_group = device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
-                    }
-                ],
-                label: Some("diffuse_bind_group"),
-            }
-        );
+        let diffuse_bind_group = bind_group_builder(&diffuse_view, &diffuse_sampler);
 
         Ok(Texture {
-            diffuse_texture,
             diffuse_bind_group,
         })
     }
