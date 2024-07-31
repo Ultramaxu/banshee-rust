@@ -10,7 +10,7 @@ fn main() {
     structured_logger::Builder::with_level("info")
         .with_target_writer("*", structured_logger::json::new_writer(std::io::stdout()))
         .init();
-    let mut glfw_adapter = match GLFWAdapter::new() {
+    let mut glfw_adapter = match GLFWAdapter::new("Banshee Engine v0.0.0 - GLFW/WGPU - Desktop Target - Test") {
         Ok(glfw_adapter) => glfw_adapter,
         Err(e) => {
             log::error!("{:?}", e);

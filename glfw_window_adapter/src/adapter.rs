@@ -8,7 +8,7 @@ pub struct GLFWAdapter {
 }
 
 impl GLFWAdapter {
-    pub fn new() -> anyhow::Result<GLFWAdapter> {
+    pub fn new(title: &str) -> anyhow::Result<GLFWAdapter> {
         use glfw::fail_on_errors;
         log::info!("Initializing GLFW.");
 
@@ -23,7 +23,7 @@ impl GLFWAdapter {
         log::info!("Creating GLFW window.");
 
         let (mut window, events) = glfw
-            .create_window(800, 600, "Hello this is window", glfw::WindowMode::Windowed)
+            .create_window(800, 600, title, glfw::WindowMode::Windowed)
             .context("Failed to create GLFW window.")?;
 
         log::info!("GLFW window created.");
