@@ -1,9 +1,7 @@
 use anyhow::Context;
-use common::gateways::ImageLoaderGatewayResult;
 use crate::camera::PerspectiveCamera;
 use crate::instance::Instance;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
-use crate::vertex::Vertex;
 
 pub struct WgpuGraphicalAdapterState<'a> {
     surface: wgpu::Surface<'a>,
@@ -33,7 +31,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         let camera = PerspectiveCamera {
             // position the camera 1 unit up and 2 units back
             // +z is out of the screen
-            eye: (0.0, 1.0, 2.0).into(),
+            eye: (0.0, 3.0, 10.0).into(),
             // have it look at the origin
             target: (0.0, 0.0, 0.0).into(),
             // which way is "up"
@@ -59,16 +57,12 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
     }
 
     pub fn load_model_sync(&mut self,
-                           vertices: Vec<Vertex>,
-                           indices: Vec<u16>,
+                           filename: &str,
                            instances: Vec<Instance>,
-                           raw_texture_data: ImageLoaderGatewayResult,
     ) -> anyhow::Result<()> {
         self.render_pipeline.load_model_sync(
-            vertices,
-            indices,
+            filename,
             instances,
-            raw_texture_data,
             &self.device,
             &self.queue
         )

@@ -1,4 +1,4 @@
-use common::gateways::ImageLoaderGatewayResult;
+use image::GenericImageView;
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -8,16 +8,16 @@ pub struct Texture {
 
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-    
-    pub fn new_diffuse_texture(
-        raw_texture_data: ImageLoaderGatewayResult,
+
+    pub fn new_diffuse_texture_from_bytes(
+        raw_data: Vec<u8>,
         device: &wgpu::Device,
         queue: &wgpu::Queue
     ) -> anyhow::Result<Texture> {
-
+        let diffuse_image = image::load_from_memory(&raw_data)?;
         let texture_size = wgpu::Extent3d {
-            width: raw_texture_data.dimensions.0,
-            height: raw_texture_data.dimensions.1,
+            width: diffuse_image.dimensions().0,
+            height: diffuse_image.dimensions().1,
             depth_or_array_layers: 1,
         };
 
@@ -55,12 +55,12 @@ impl Texture {
                 aspect: wgpu::TextureAspect::All,
             },
             // The actual pixel data
-            &raw_texture_data.data,
+            &diffuse_image.to_rgba8().into_raw(),
             // The layout of the texture
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * raw_texture_data.dimensions.0),
-                rows_per_image: Some(raw_texture_data.dimensions.1),
+                bytes_per_row: Some(4 * diffuse_image.dimensions().0),
+                rows_per_image: Some(diffuse_image.dimensions().1),
             },
             texture_size,
         );

@@ -6,5 +6,5 @@ members = [
 	"glfw_window_adapter",
 	"test_target_desktop",
 	"common",
-	"image_crate_image_loader_adapter",
+	"wgpu_obj_model_loader_adapter",
 ]

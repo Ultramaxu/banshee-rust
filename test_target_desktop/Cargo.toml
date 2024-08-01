@@ -7,7 +7,7 @@ edition = "2021"
 glfw_window_adapter = { path = "../glfw_window_adapter" }
 common = { path = "../common" }
 wgpu_graphical_adapter = { path = "../wgpu_graphical_adapter" }
-image_crate_image_loader_adapter = { path = "../image_crate_image_loader_adapter" }
+wgpu_obj_model_loader_adapter = { path = "../wgpu_obj_model_loader_adapter" }
 log = "0.4.22"
 structured-logger = "1.0.3"
 pollster = "0.3.0"
@@ -15,3 +15,8 @@ cgmath= "0.18.0"
 
 [dependencies.glfw]
 version = "0.58.0"
+
+[build-dependencies]
+anyhow = "1.0.86"
+fs_extra = "1.2"
+glob = "0.3"

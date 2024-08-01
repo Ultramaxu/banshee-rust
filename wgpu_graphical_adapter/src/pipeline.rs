@@ -1,7 +1,5 @@
-use common::gateways::ImageLoaderGatewayResult;
 use crate::camera::PerspectiveCamera;
 use crate::instance::Instance;
-use crate::vertex::Vertex;
 
 pub trait WgpuGraphicalAdapterPipelineFactory {
     fn create(
@@ -14,14 +12,12 @@ pub trait WgpuGraphicalAdapterPipelineFactory {
 
 pub trait WgpuGraphicalAdapterPipeline {
     fn load_model_sync(&mut self,
-                       vertices: Vec<Vertex>,
-                       indices: Vec<u16>,
+                       filename: &str,
                        instances: Vec<Instance>,
-                       raw_texture_data: ImageLoaderGatewayResult,
                        device: &wgpu::Device,
                        queue: &wgpu::Queue,
     ) -> anyhow::Result<()>;
     fn update_camera(&mut self, camera: &PerspectiveCamera, queue: &wgpu::Queue);
-    fn render(&self, render_pass: &mut wgpu::RenderPass);
+    fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>);
     fn get_depth_stencil_attachment(&self) -> Option<wgpu::RenderPassDepthStencilAttachment>;
 }

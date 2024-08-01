@@ -1,0 +1,11 @@
+[package]
+name = "wgpu_obj_model_loader_adapter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu_graphical_adapter = { path = "../wgpu_graphical_adapter" }
+anyhow = "1.0.86"
+wgpu = "22.0.0"
+bytemuck = "1.16.1"
+tobj = "4.0.2"

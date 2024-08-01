@@ -1,23 +1,30 @@
+use std::rc::Rc;
+
 use wgpu::util::DeviceExt;
 
-use common::gateways::ImageLoaderGatewayResult;
-
 use crate::camera::{CameraUniform, PerspectiveCamera};
+use crate::gateways::WgpuModelLoaderGateway;
 use crate::instance::{Instance, InstanceRaw};
 use crate::model::Model;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
 use crate::texture::Texture;
-use crate::vertex::Vertex;
+use crate::vertex::ModelVertex;
 
-pub struct DefaultWgpuGraphicalAdapterPipelineFactory {}
+pub struct DefaultWgpuGraphicalAdapterPipelineFactory {
+    model_loader_gateway: Rc<dyn WgpuModelLoaderGateway>,
+}
 
-impl<'a> DefaultWgpuGraphicalAdapterPipelineFactory {
-    pub fn new() -> DefaultWgpuGraphicalAdapterPipelineFactory {
-        DefaultWgpuGraphicalAdapterPipelineFactory {}
+impl DefaultWgpuGraphicalAdapterPipelineFactory {
+    pub fn new(
+        model_loader_gateway: Rc<dyn WgpuModelLoaderGateway>
+    ) -> DefaultWgpuGraphicalAdapterPipelineFactory {
+        DefaultWgpuGraphicalAdapterPipelineFactory {
+            model_loader_gateway,
+        }
     }
 }
 
-impl<'a> WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipelineFactory {
+impl WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipelineFactory {
     fn create(
         &self,
         device: &wgpu::Device,
@@ -27,13 +34,14 @@ impl<'a> WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipe
         Box::new(DefaultWgpuGraphicalAdapterPipeline::new(
             device,
             config,
-            include_str!("shader.wgsl"),
             camera,
+            self.model_loader_gateway.clone(),
         ))
     }
 }
 
 pub struct DefaultWgpuGraphicalAdapterPipeline {
+    model_loader_gateway: Rc<dyn WgpuModelLoaderGateway>,
     pipeline: wgpu::RenderPipeline,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     models: Vec<Model>,
@@ -47,12 +55,12 @@ impl DefaultWgpuGraphicalAdapterPipeline {
     pub fn new(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
-        shader_code: &str,
         camera: &PerspectiveCamera,
+        model_loader_gateway: Rc<dyn WgpuModelLoaderGateway>,
     ) -> DefaultWgpuGraphicalAdapterPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Default Render Pipeline Shader"),
-            source: wgpu::ShaderSource::Wgsl(shader_code.into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
         let texture_bind_group_layout =
@@ -138,7 +146,7 @@ impl DefaultWgpuGraphicalAdapterPipeline {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[
-                    DefaultWgpuGraphicalAdapterPipeline::get_vertex_desc(),
+                    DefaultWgpuGraphicalAdapterPipeline::get_model_vertex_desc(),
                     DefaultWgpuGraphicalAdapterPipeline::get_instance_raw_desc(),
                 ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -189,12 +197,13 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             camera_buffer,
             camera_bind_group,
             depth_texture,
+            model_loader_gateway,
         }
     }
 
-    fn get_vertex_desc() -> wgpu::VertexBufferLayout<'static> {
+    fn get_model_vertex_desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
+            array_stride: size_of::<ModelVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -206,7 +215,12 @@ impl DefaultWgpuGraphicalAdapterPipeline {
                     offset: size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x2,
-                }
+                },
+                wgpu::VertexAttribute {
+                    offset: size_of::<[f32; 5]>() as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
             ],
         }
     }
@@ -251,22 +265,26 @@ impl DefaultWgpuGraphicalAdapterPipeline {
 impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
     fn load_model_sync(
         &mut self,
-        vertices: Vec<Vertex>,
-        indices: Vec<u16>,
+        filename: &str,
         instances: Vec<Instance>,
-        raw_texture_data: ImageLoaderGatewayResult,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> anyhow::Result<()> {
-        let model = Model::load(
-            vertices,
-            indices,
+        let model = self.model_loader_gateway.load_model_sync(
+            filename,
             instances,
-            raw_texture_data,
-            |texture_view, sampler| {
+            device,
+            queue,
+            &self.texture_bind_group_layout,
+            Box::new(|
+                device,
+                texture_view,
+                sampler,
+                layout
+            | {
                 device.create_bind_group(
                     &wgpu::BindGroupDescriptor {
-                        layout: &self.texture_bind_group_layout,
+                        layout,
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
@@ -277,12 +295,10 @@ impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
                                 resource: wgpu::BindingResource::Sampler(&sampler),
                             }
                         ],
-                        label: Some("diffuse_bind_group"),
+                        label: None,
                     }
                 )
-            },
-            device,
-            queue,
+            }),
         )?;
         self.models.push(model);
         Ok(())
@@ -293,11 +309,12 @@ impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
     }
 
-    fn render(&self, render_pass: &mut wgpu::RenderPass) {
+    fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
         for model in &self.models {
-            model.render(render_pass);
+
+            use crate::model::DrawModel;
+            render_pass.draw_model_instanced(model, &self.camera_bind_group, None);
         }
     }
 
