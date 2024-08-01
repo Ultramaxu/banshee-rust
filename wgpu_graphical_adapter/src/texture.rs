@@ -1,20 +1,20 @@
+use common::gateways::ImageLoaderGatewayResult;
+
 pub struct Texture {
     pub diffuse_bind_group: wgpu::BindGroup,
 }
 
 impl Texture {
     pub fn load<F>(
-        image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
+        raw_texture_data: ImageLoaderGatewayResult,
         bind_group_builder: F,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        id: &str,
+        queue: &wgpu::Queue
     ) -> anyhow::Result<Texture> where F: FnOnce(&wgpu::TextureView, &wgpu::Sampler) -> wgpu::BindGroup {
-        let image = image_loader_gateway.load_sync(id)?;
 
         let texture_size = wgpu::Extent3d {
-            width: image.dimensions.0,
-            height: image.dimensions.1,
+            width: raw_texture_data.dimensions.0,
+            height: raw_texture_data.dimensions.1,
             depth_or_array_layers: 1,
         };
 
@@ -52,12 +52,12 @@ impl Texture {
                 aspect: wgpu::TextureAspect::All,
             },
             // The actual pixel data
-            &image.data,
+            &raw_texture_data.data,
             // The layout of the texture
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * image.dimensions.0),
-                rows_per_image: Some(image.dimensions.1),
+                bytes_per_row: Some(4 * raw_texture_data.dimensions.0),
+                rows_per_image: Some(raw_texture_data.dimensions.1),
             },
             texture_size,
         );

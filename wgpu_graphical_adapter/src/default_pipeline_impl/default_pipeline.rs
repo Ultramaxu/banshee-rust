@@ -1,10 +1,10 @@
-use wgpu::Queue;
 use wgpu::util::DeviceExt;
 
-use common::gateways::ImageLoaderGateway;
+use common::gateways::ImageLoaderGatewayResult;
 
 use crate::camera::{CameraUniform, PerspectiveCamera};
-use crate::model::{Model, UnloadedModel};
+use crate::instance::{Instance, InstanceRaw};
+use crate::model::Model;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
 use crate::vertex::Vertex;
 
@@ -27,7 +27,7 @@ impl<'a> WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipe
             device,
             config,
             include_str!("shader.wgsl"),
-            camera
+            camera,
         ))
     }
 }
@@ -135,6 +135,7 @@ impl DefaultWgpuGraphicalAdapterPipeline {
                 entry_point: "vs_main",
                 buffers: &[
                     DefaultWgpuGraphicalAdapterPipeline::get_vertex_desc(),
+                    DefaultWgpuGraphicalAdapterPipeline::get_instance_raw_desc(),
                 ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -199,18 +200,59 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             ],
         }
     }
+
+    fn get_instance_raw_desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: size_of::<InstanceRaw>() as wgpu::BufferAddress,
+            // We need to switch from using a step mode of Vertex to Instance
+            // This means that our shaders will only change to use the next
+            // instance when the shader starts processing a new instance
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                // A mat4 takes up 4 vertex slots as it is technically 4 vec4s. We need to define a slot
+                // for each vec4. We'll have to reassemble the mat4 in the shader.
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    // While our vertex shader only uses locations 0, and 1 now, in later tutorials, we'll
+                    // be using 2, 3, and 4, for Vertex. We'll start at slot 5, not conflict with them later
+                    shader_location: 5,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                    shader_location: 6,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    shader_location: 7,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: size_of::<[f32; 12]>() as wgpu::BufferAddress,
+                    shader_location: 8,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+            ],
+        }
+    }
 }
 
 impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
     fn load_model_sync(
         &mut self,
-        model: UnloadedModel,
-        image_loader_gateway: &dyn ImageLoaderGateway,
+        vertices: Vec<Vertex>,
+        indices: Vec<u16>,
+        instances: Vec<Instance>,
+        raw_texture_data: ImageLoaderGatewayResult,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> anyhow::Result<()> {
-        let model = model.load(
-            image_loader_gateway,
+        let model = Model::load(
+            vertices,
+            indices,
+            instances,
+            raw_texture_data,
             |texture_view, sampler| {
                 device.create_bind_group(
                     &wgpu::BindGroupDescriptor {
@@ -236,7 +278,7 @@ impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
         Ok(())
     }
 
-    fn update_camera(&mut self, camera: &PerspectiveCamera, queue: &Queue) {
+    fn update_camera(&mut self, camera: &PerspectiveCamera, queue: &wgpu::Queue) {
         self.camera_uniform.update_view_proj(camera);
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
     }

@@ -1,5 +1,7 @@
+use common::gateways::ImageLoaderGatewayResult;
 use crate::camera::PerspectiveCamera;
-use crate::model::UnloadedModel;
+use crate::instance::Instance;
+use crate::vertex::Vertex;
 
 pub trait WgpuGraphicalAdapterPipelineFactory {
     fn create(
@@ -12,8 +14,10 @@ pub trait WgpuGraphicalAdapterPipelineFactory {
 
 pub trait WgpuGraphicalAdapterPipeline {
     fn load_model_sync(&mut self,
-                       model: UnloadedModel,
-                       image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
+                       vertices: Vec<Vertex>,
+                       indices: Vec<u16>,
+                       instances: Vec<Instance>,
+                       raw_texture_data: ImageLoaderGatewayResult,
                        device: &wgpu::Device,
                        queue: &wgpu::Queue,
     ) -> anyhow::Result<()>;

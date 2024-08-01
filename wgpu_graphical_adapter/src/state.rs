@@ -1,7 +1,9 @@
 use anyhow::Context;
+use common::gateways::ImageLoaderGatewayResult;
 use crate::camera::PerspectiveCamera;
-use crate::model::UnloadedModel;
+use crate::instance::Instance;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
+use crate::vertex::Vertex;
 
 pub struct WgpuGraphicalAdapterState<'a> {
     surface: wgpu::Surface<'a>,
@@ -57,12 +59,16 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
     }
 
     pub fn load_model_sync(&mut self,
-                           model: UnloadedModel,
-                           image_loader_gateway: &dyn common::gateways::ImageLoaderGateway,
+                           vertices: Vec<Vertex>,
+                           indices: Vec<u16>,
+                           instances: Vec<Instance>,
+                           raw_texture_data: ImageLoaderGatewayResult,
     ) -> anyhow::Result<()> {
         self.render_pipeline.load_model_sync(
-            model,
-            image_loader_gateway,
+            vertices,
+            indices,
+            instances,
+            raw_texture_data,
             &self.device,
             &self.queue
         )
