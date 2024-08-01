@@ -6,6 +6,7 @@ use crate::camera::{CameraUniform, PerspectiveCamera};
 use crate::instance::{Instance, InstanceRaw};
 use crate::model::Model;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
+use crate::texture::Texture;
 use crate::vertex::Vertex;
 
 pub struct DefaultWgpuGraphicalAdapterPipelineFactory {}
@@ -39,6 +40,7 @@ pub struct DefaultWgpuGraphicalAdapterPipeline {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    depth_texture: Texture,
 }
 
 impl DefaultWgpuGraphicalAdapterPipeline {
@@ -117,6 +119,8 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             label: Some("Default Pipeline Camera Bind Group"),
         });
 
+        let depth_texture = Texture::new_depth_texture(&device, &config, "depth_texture");
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Default Render Pipeline Layout"),
@@ -161,7 +165,13 @@ impl DefaultWgpuGraphicalAdapterPipeline {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: Texture::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less, // draw pixels from front to back
+                stencil: wgpu::StencilState::default(), // TODO later
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -171,7 +181,6 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             cache: None,
         });
 
-
         DefaultWgpuGraphicalAdapterPipeline {
             pipeline: render_pipeline,
             texture_bind_group_layout,
@@ -179,6 +188,7 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             camera_uniform,
             camera_buffer,
             camera_bind_group,
+            depth_texture,
         }
     }
 
@@ -289,5 +299,16 @@ impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
         for model in &self.models {
             model.render(render_pass);
         }
+    }
+
+    fn get_depth_stencil_attachment(&self) -> Option<wgpu::RenderPassDepthStencilAttachment> {
+        Some(wgpu::RenderPassDepthStencilAttachment {
+            view: &self.depth_texture.view,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Clear(1.0),
+                store: wgpu::StoreOp::Store,
+            }),
+            stencil_ops: None,
+        })
     }
 }

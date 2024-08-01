@@ -1,3 +1,4 @@
+use wgpu::BindGroup;
 use wgpu::util::DeviceExt;
 use common::gateways::ImageLoaderGatewayResult;
 use crate::instance::Instance;
@@ -13,6 +14,7 @@ pub struct Model {
     num_indices: u32,
     instance_buffer: wgpu::Buffer,
     texture: Texture,
+    diffuse_bind_group: BindGroup,
 }
 
 impl Model {
@@ -25,12 +27,12 @@ impl Model {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> anyhow::Result<Model> where F: FnOnce(&wgpu::TextureView, &wgpu::Sampler) -> wgpu::BindGroup {
-        let texture = Texture::load(
+        let texture = Texture::new_diffuse_texture(
             raw_texture_data,
-            bind_group_builder,
             device,
             queue
         )?;
+        let diffuse_bind_group = bind_group_builder(&texture.view, &texture.sampler);
 
         let vertex_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -67,12 +69,13 @@ impl Model {
             index_buffer,
             instance_buffer,
             texture,
+            diffuse_bind_group,
             num_indices,
         })
     }
     
     pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        render_pass.set_bind_group(1, &self.texture.diffuse_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.diffuse_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);

@@ -101,7 +101,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: self.render_pipeline.get_depth_stencil_attachment(),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });

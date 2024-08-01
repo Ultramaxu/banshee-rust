@@ -23,4 +23,5 @@ pub trait WgpuGraphicalAdapterPipeline {
     ) -> anyhow::Result<()>;
     fn update_camera(&mut self, camera: &PerspectiveCamera, queue: &wgpu::Queue);
     fn render(&self, render_pass: &mut wgpu::RenderPass);
+    fn get_depth_stencil_attachment(&self) -> Option<wgpu::RenderPassDepthStencilAttachment>;
 }
