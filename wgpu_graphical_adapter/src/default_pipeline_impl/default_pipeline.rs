@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use wgpu::util::DeviceExt;
@@ -44,11 +45,10 @@ pub struct DefaultWgpuGraphicalAdapterPipeline {
     model_loader_gateway: Rc<dyn WgpuModelLoaderGateway>,
     pipeline: wgpu::RenderPipeline,
     texture_bind_group_layout: wgpu::BindGroupLayout,
-    models: Vec<Model>,
+    models: HashMap<String, Model>,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    depth_texture: Texture,
 }
 
 impl DefaultWgpuGraphicalAdapterPipeline {
@@ -127,8 +127,6 @@ impl DefaultWgpuGraphicalAdapterPipeline {
             label: Some("Default Pipeline Camera Bind Group"),
         });
 
-        let depth_texture = Texture::new_depth_texture(&device, &config, "depth_texture");
-
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Default Render Pipeline Layout"),
@@ -192,11 +190,10 @@ impl DefaultWgpuGraphicalAdapterPipeline {
         DefaultWgpuGraphicalAdapterPipeline {
             pipeline: render_pipeline,
             texture_bind_group_layout,
-            models: Vec::new(),
+            models: HashMap::new(),
             camera_uniform,
             camera_buffer,
             camera_bind_group,
-            depth_texture,
             model_loader_gateway,
         }
     }
@@ -265,6 +262,7 @@ impl DefaultWgpuGraphicalAdapterPipeline {
 impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
     fn load_model_sync(
         &mut self,
+        id: &str,
         filename: &str,
         instances: Vec<Instance>,
         device: &wgpu::Device,
@@ -300,7 +298,7 @@ impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
                 )
             }),
         )?;
-        self.models.push(model);
+        self.models.insert(id.to_string(), model);
         Ok(())
     }
 
@@ -311,21 +309,20 @@ impl WgpuGraphicalAdapterPipeline for DefaultWgpuGraphicalAdapterPipeline {
 
     fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         render_pass.set_pipeline(&self.pipeline);
-        for model in &self.models {
+        for (id, model) in &self.models {
 
+            log::debug!("Drawing model: {}", id);
             use crate::model::DrawModel;
             render_pass.draw_model_instanced(model, &self.camera_bind_group, None);
         }
     }
-
-    fn get_depth_stencil_attachment(&self) -> Option<wgpu::RenderPassDepthStencilAttachment> {
-        Some(wgpu::RenderPassDepthStencilAttachment {
-            view: &self.depth_texture.view,
-            depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Clear(1.0),
-                store: wgpu::StoreOp::Store,
-            }),
-            stencil_ops: None,
-        })
+    
+    fn update_model_instances(&mut self, model_id: &str, instances: Vec<Instance>, device: &wgpu::Device) -> anyhow::Result<()> {
+        if let Some(model) = self.models.get_mut(model_id) {
+            model.instances = Instance::instances_to_buffer(&instances, device);
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Model not found: {}", model_id))
+        }
     }
 }

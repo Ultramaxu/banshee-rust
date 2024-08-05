@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use anyhow::Context;
+
 use crate::camera::PerspectiveCamera;
 use crate::instance::Instance;
 use crate::pipeline::{WgpuGraphicalAdapterPipeline, WgpuGraphicalAdapterPipelineFactory};
+use crate::texture::Texture;
 
 pub struct WgpuGraphicalAdapterState<'a> {
     surface: wgpu::Surface<'a>,
@@ -9,8 +12,9 @@ pub struct WgpuGraphicalAdapterState<'a> {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: common::ScreenSize,
+    depth_texture: Texture,
     pub camera: PerspectiveCamera,
-    pub render_pipeline: Box<dyn WgpuGraphicalAdapterPipeline>,
+    pub render_pipelines: HashMap<String, Box<dyn WgpuGraphicalAdapterPipeline>>,
 }
 
 impl<'a> WgpuGraphicalAdapterState<'a> {
@@ -18,7 +22,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
     pub async fn new(
         window: wgpu::SurfaceTarget<'a>,
         size: common::ScreenSize,
-        factory: Box<dyn WgpuGraphicalAdapterPipelineFactory>,
+        factories: HashMap<String, Box<dyn WgpuGraphicalAdapterPipelineFactory>>,
     ) -> anyhow::Result<WgpuGraphicalAdapterState<'a>> {
         Self::validate_size(&size)?;
 
@@ -28,10 +32,12 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         let (device, queue) = Self::request_device_and_queue(&adapter).await?;
         let config = Self::configure_surface(&size, &surface, &adapter, &device);
 
+        let depth_texture = Texture::new_depth_texture(&device, &config, "depth_texture");
+
         let camera = PerspectiveCamera {
             // position the camera 1 unit up and 2 units back
             // +z is out of the screen
-            eye: (0.0, 3.0, 10.0).into(),
+            eye: (0.0, 6.0, 20.0).into(),
             // have it look at the origin
             target: (0.0, 0.0, 0.0).into(),
             // which way is "up"
@@ -42,8 +48,10 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
             zfar: 100.0,
         };
 
-        let render_pipeline = factory.create(&device, &config, &camera);
-        
+        let mut render_pipelines: HashMap<String, Box<dyn WgpuGraphicalAdapterPipeline>> = HashMap::new();
+        for (name, factory) in factories {
+            render_pipelines.insert(name, factory.create(&device, &config, &camera));
+        }
 
         Ok(WgpuGraphicalAdapterState {
             surface,
@@ -51,27 +59,39 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
             queue,
             config,
             size,
+            depth_texture,
             camera,
-            render_pipeline,
+            render_pipelines,
         })
     }
 
     pub fn load_model_sync(&mut self,
+                           pipeline_id: &str,
+                           model_id : &str,
                            filename: &str,
                            instances: Vec<Instance>,
     ) -> anyhow::Result<()> {
-        self.render_pipeline.load_model_sync(
-            filename,
-            instances,
-            &self.device,
-            &self.queue
-        )
+        if let Some(pipeline) = self.render_pipelines.get_mut(pipeline_id) {
+            pipeline.load_model_sync(model_id, filename, instances, &self.device, &self.queue)
+        } else {
+            Err(anyhow::anyhow!("Pipeline not found: {}", pipeline_id))
+        }
     }
-    
+
     pub fn update_camera(&mut self) {
-        self.render_pipeline.update_camera(&self.camera, &self.queue);
+        for (_, pipeline) in self.render_pipelines.iter_mut() {
+            pipeline.update_camera(&self.camera, &self.queue);
+        }
     }
-    
+
+    pub fn update_model_instances(&mut self, pipeline_id: &str, model_id: &str, instances: Vec<Instance>) -> anyhow::Result<()> {
+        if let Some(pipeline) = self.render_pipelines.get_mut(pipeline_id) {
+            pipeline.update_model_instances(model_id, instances, &self.device)
+        } else {
+            Err(anyhow::anyhow!("Pipeline not found: {}", pipeline_id))
+        }
+    }
+
     pub fn render(&mut self) -> anyhow::Result<()> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -95,12 +115,21 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: self.render_pipeline.get_depth_stencil_attachment(),
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
 
-            self.render_pipeline.render(&mut render_pass);
+            for (_, render_pipeline) in self.render_pipelines.iter() {
+                render_pipeline.render(&mut render_pass);
+            }
         }
 
         // submit will accept anything that implements IntoIter
@@ -166,7 +195,7 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         size: &common::ScreenSize,
         surface: &wgpu::Surface,
         adapter: &wgpu::Adapter,
-        device: &wgpu::Device
+        device: &wgpu::Device,
     ) -> wgpu::SurfaceConfiguration {
         log::info!("Configuring surface...");
         let surface_caps = surface.get_capabilities(&adapter);
@@ -191,5 +220,4 @@ impl<'a> WgpuGraphicalAdapterState<'a> {
         log::info!("Finished configuring surface...");
         config
     }
-
 }
