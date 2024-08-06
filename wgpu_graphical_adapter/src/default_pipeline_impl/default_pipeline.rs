@@ -29,12 +29,12 @@ impl WgpuGraphicalAdapterPipelineFactory for DefaultWgpuGraphicalAdapterPipeline
     fn create(
         &self,
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
+        format: wgpu::TextureFormat,
         camera: &PerspectiveCamera,
     ) -> Box<dyn WgpuGraphicalAdapterPipeline> {
         Box::new(DefaultWgpuGraphicalAdapterPipeline::new(
             device,
-            config,
+            format,
             camera,
             self.model_loader_gateway.clone(),
         ))
@@ -54,7 +54,7 @@ pub struct DefaultWgpuGraphicalAdapterPipeline {
 impl DefaultWgpuGraphicalAdapterPipeline {
     pub fn new(
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
+        format: wgpu::TextureFormat,
         camera: &PerspectiveCamera,
         model_loader_gateway: Rc<dyn WgpuModelLoaderGateway>,
     ) -> DefaultWgpuGraphicalAdapterPipeline {
@@ -153,7 +153,7 @@ impl DefaultWgpuGraphicalAdapterPipeline {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
+                    format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

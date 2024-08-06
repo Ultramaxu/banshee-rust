@@ -1,4 +1,7 @@
+use std::path::Path;
+use std::rc::Rc;
 use image::GenericImageView;
+use common::Dimentions;
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -12,7 +15,7 @@ impl Texture {
     pub fn new_diffuse_texture_from_bytes(
         raw_data: Vec<u8>,
         device: &wgpu::Device,
-        queue: &wgpu::Queue
+        queue: &wgpu::Queue,
     ) -> anyhow::Result<Texture> {
         let diffuse_image = image::load_from_memory(&raw_data)?;
         let texture_size = wgpu::Extent3d {
@@ -88,10 +91,14 @@ impl Texture {
         })
     }
 
-    pub fn new_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, label: &str) -> Self {
+    pub fn new_depth_texture(
+        device: &wgpu::Device,
+        size: Dimentions,
+        label: &str,
+    ) -> Self {
         let size = wgpu::Extent3d {
-            width: config.width,
-            height: config.height,
+            width: size.width,
+            height: size.height,
             depth_or_array_layers: 1,
         };
         let desc = wgpu::TextureDescriptor {
@@ -124,5 +131,92 @@ impl Texture {
         );
 
         Self { texture, view, sampler }
+    }
+}
+
+pub struct RenderTargetTexture {
+    pub texture: wgpu::Texture,
+    pub view: Rc<wgpu::TextureView>,
+    pub output_buffer: wgpu::Buffer,
+    pub dimensions: Dimentions,
+}
+
+impl RenderTargetTexture {
+    pub fn new(
+        device: &wgpu::Device,
+        size: &Dimentions,
+        label: &str,
+    ) -> Self {
+        let texture_desc = wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+            ,
+            view_formats: &[],
+        };
+        let texture = device.create_texture(&texture_desc);
+        let view = texture.create_view(&Default::default());
+
+        let u32_size = size_of::<u32>() as u32;
+
+        let output_buffer_size = (u32_size * size.width * size.height) as wgpu::BufferAddress;
+        let output_buffer_desc = wgpu::BufferDescriptor {
+            size: output_buffer_size,
+            usage: wgpu::BufferUsages::COPY_DST
+                // this tells wpgu that we want to read this buffer from the cpu
+                | wgpu::BufferUsages::MAP_READ,
+            label: None,
+            mapped_at_creation: false,
+        };
+        let output_buffer = device.create_buffer(&output_buffer_desc);
+
+        Self {
+            texture,
+            view: Rc::new(view),
+            output_buffer,
+            dimensions: Dimentions {
+                width: size.width,
+                height: size.height,
+            },
+        }
+    }
+
+    pub async fn to_file(&self,
+                         output_path: &Box<Path>,
+                         device: &wgpu::Device,
+    ) -> anyhow::Result<()> {
+        {
+            let buffer_slice = self.output_buffer.slice(..);
+
+            // NOTE: We have to create the mapping THEN device.poll() before await
+            // the future. Otherwise the application will freeze.
+            let (tx, rx) = futures_intrusive::channel::shared::oneshot_channel();
+            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                tx.send(result).unwrap();
+            });
+            device.poll(wgpu::Maintain::Wait);
+            rx.receive().await.unwrap()?;
+
+            let data = buffer_slice.get_mapped_range();
+
+            use image::{ImageBuffer, Rgba};
+            let buffer = ImageBuffer::<Rgba<u8>, _>::from_raw(
+                self.dimensions.width,
+                self.dimensions.height,
+                data,
+            ).unwrap();
+            buffer.save(output_path)?;
+        }
+        self.output_buffer.unmap();
+        Ok(())
     }
 }

@@ -12,6 +12,8 @@ log = "0.4.22"
 structured-logger = "1.0.3"
 pollster = "0.3.0"
 cgmath= "0.18.0"
+anyhow = "1.0.86"
+clap = { version = "4.5.13", features = ["derive"] }
 
 [dependencies.glfw]
 version = "0.58.0"

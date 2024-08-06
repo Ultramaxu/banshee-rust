@@ -1,5 +1,5 @@
 use anyhow::Context;
-use common::ScreenSize;
+use common::Dimentions;
 
 pub struct GLFWAdapter {
     glfw: glfw::Glfw,
@@ -52,8 +52,8 @@ impl GLFWAdapter {
         self.window.clone()
     }
 
-    pub fn get_window_size(&self) -> ScreenSize {
-        ScreenSize {
+    pub fn get_window_size(&self) -> Dimentions {
+        Dimentions {
             width: self.window.get_size().0 as _,
             height: self.window.get_size().1 as _,
         }

@@ -5,7 +5,7 @@ pub trait WgpuGraphicalAdapterPipelineFactory {
     fn create(
         &self,
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
+        format: wgpu::TextureFormat,
         camera: &PerspectiveCamera,
     ) -> Box<dyn WgpuGraphicalAdapterPipeline>;
 }
